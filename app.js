@@ -40,7 +40,6 @@ var WORKER_INTERVAL = isNaN(parseInt(conf.workerInterval)) ? 30 * 1000 :
 var SIZE_LIMIT = get_limit_size(); // default : 10MB
 var ROTATE_CRON = conf.rotateInterval || "0 0 * * *"; // default : every day at midnight
 var RETAIN = isNaN(parseInt(conf.retain)) ? undefined : parseInt(conf.retain); // All
-console.log(RETAIN);
 var COMPRESSION = JSON.parse(conf.compress) || false; // Do not compress by default
 var DATE_FORMAT = conf.dateFormat || 'YYYY-MM-DD_HH-mm-ss';
 var ROTATE_MODULE = JSON.parse(conf.rotateModule) || true;
@@ -61,14 +60,16 @@ function get_limit_size() {
 }
 
 function delete_old(file) {
-  var fileBaseName = file.substr(0, file.length - 4).split('/').pop() + "__";
+  //var fileBaseName = file.substr(0, file.length - 4).split('/').pop() + "__";
 
-  fs.readdir(PM2_ROOT_PATH + "/logs", function(err, files) {
+  var dirName = path.dirname(file);
+
+  fs.readdir(dirName, function(err, files) {
     if (err) return pmx.notify(err);
 
     var rotated_files = []
     for (var i = 0, len = files.length; i < len; i++) {
-      if (files[i].indexOf(fileBaseName) >= 0)
+      if (files[i].indexOf(file) >= 0)
         rotated_files.push(files[i]);
     }
     rotated_files.sort().reverse();
@@ -76,7 +77,7 @@ function delete_old(file) {
     for (var i = rotated_files.length - 1; i >= 0; i--) {
       if (RETAIN > i) return ;
 
-      fs.unlink(path.resolve(PM2_ROOT_PATH + "/logs", rotated_files[i]), function (err) {
+      fs.unlink(path.resolve(dirName, rotated_files[i]), function (err) {
         if (err) return console.error(err);
         console.log('"' + rotated_files[i] + '" has been deleted');
       });
@@ -85,8 +86,7 @@ function delete_old(file) {
 }
 
 function proceed(file) {
-  var final_name = file.substr(0, file.length - 4) + '__'
-    + moment().format(DATE_FORMAT) + '.log';
+  var final_name = file + '.' + moment().format(DATE_FORMAT);
   // if compression is enabled, add gz extention and create a gzip instance
   if (COMPRESSION) {
     var GZIP = zlib.createGzip({ level: zlib.Z_BEST_COMPRESSION, memLevel: zlib.Z_BEST_COMPRESSION });
@@ -114,7 +114,6 @@ function proceed(file) {
 	readStream.on('end', function() {
 		fs.truncate(file, function (err) {
       if (err) return pmx.notify(err);
-      console.log('"' + final_name + '" has been created');
 
       if (typeof(RETAIN) === 'number') 
         delete_old(file);
@@ -171,9 +170,9 @@ pm2.connect(function(err) {
     // get list of process managed by pm2
     pm2.list(function(err, apps) {
         if (err) return console.error(err.stack || err);
-
         // force rotate for each app
         apps.forEach(function(app) {
+          console.info(app.pm2_env.axm_options);
           // if its a module and the rotate of module is disabled, ignore
           if (typeof(app.pm2_env.axm_options.isModule) !== 'undefined' && !ROTATE_MODULE) return ;
 
